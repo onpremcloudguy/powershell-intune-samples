@@ -1,6 +1,5 @@
-
-<#
-
+﻿<#
+ 
 .COPYRIGHT
 Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT license.
 See LICENSE in the project root for license information.
@@ -89,13 +88,13 @@ Write-Host "Checking for AzureAD module..."
 [System.Reflection.Assembly]::LoadFrom($adalforms) | Out-Null
 
 $clientId = "d1ddf0e4-d672-4dae-b554-9d5bdfd93547"
-
+ 
 $redirectUri = "urn:ietf:wg:oauth:2.0:oob"
-
+ 
 $resourceAppIdURI = "https://graph.microsoft.com"
-
+ 
 $authority = "https://login.microsoftonline.com/$Tenant"
-
+ 
     try {
 
     $authContext = New-Object "Microsoft.IdentityModel.Clients.ActiveDirectory.AuthenticationContext" -ArgumentList $authority
@@ -149,145 +148,94 @@ $authority = "https://login.microsoftonline.com/$Tenant"
 
 ####################################################
 
-Function Get-RBACRole(){
+function Get-AndroidManagedStoreAccount {
 
 <#
 .SYNOPSIS
-This function is used to get RBAC Role Definitions from the Graph API REST interface
+This function is used to query the Managed Google Play configuration via the Graph API REST interface
 .DESCRIPTION
-The function connects to the Graph API Interface and gets any RBAC Role Definitions
+The function connects to the Graph API Interface and returns the Managed Google Play configuration 
 .EXAMPLE
-Get-RBACRole
-Returns any RBAC Role Definitions configured in Intune
+Get-AndroidManagedStoreAccount 
+Returns the Managed Google Play configuration from Intune 
 .NOTES
-NAME: Get-RBACRole
+NAME: Get-AndroidManagedStoreAccount
 #>
 
-$graphApiVersion = "Beta"
-$Resource = "deviceManagement/roleDefinitions"
+    
+$graphApiVersion = "beta"
+$Resource = "deviceManagement/androidManagedStoreAccountEnterpriseSettings"
     
     try {
-    
-    $uri = "https://graph.microsoft.com/$graphApiVersion/$($Resource)"
-    (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value
-    
+
+        $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource"
+        Invoke-RestMethod -Method Get -Uri $uri -Headers $authToken  
+        
     }
-    
+
     catch {
 
-    $ex = $_.Exception
-    $errorResponse = $ex.Response.GetResponseStream()
-    $reader = New-Object System.IO.StreamReader($errorResponse)
-    $reader.BaseStream.Position = 0
-    $reader.DiscardBufferedData()
-    $responseBody = $reader.ReadToEnd();
-    Write-Host "Response content:`n$responseBody" -f Red
-    Write-Error "Request to $Uri failed with HTTP Status $($ex.Response.StatusCode) $($ex.Response.StatusDescription)"
-    write-host
-    break
+        $ex = $_.Exception
+        $errorResponse = $ex.Response.GetResponseStream()
+        $reader = New-Object System.IO.StreamReader($errorResponse)
+        $reader.BaseStream.Position = 0
+        $reader.DiscardBufferedData()
+        $responseBody = $reader.ReadToEnd();
+        $line = $_.InvocationInfo.ScriptLineNumber
+        $msg = $ex.message
 
-    }
+        $ErrorMessage += "$responseBody`n"
+        $ErrorMessage += "Exception: $msg on line $line"
 
-}
-
-####################################################
-
-Function Add-RBACRole(){
-
-<#
-.SYNOPSIS
-This function is used to add an RBAC Role Definitions from the Graph API REST interface
-.DESCRIPTION
-The function connects to the Graph API Interface and adds an RBAC Role Definitions
-.EXAMPLE
-Add-RBACRole -JSON $JSON
-.NOTES
-NAME: Add-RBACRole
-#>
-
-[cmdletbinding()]
-
-param
-(
-    $JSON
-)
-
-$graphApiVersion = "Beta"
-$Resource = "deviceManagement/roleDefinitions"
-    
-    try {
-
-        if(!$JSON){
-
-        write-host "No JSON was passed to the function, provide a JSON variable" -f Red
+        Write-Error $ErrorMessage
         break
 
-        }
-
-        Test-JSON -JSON $JSON
-    
-        $uri = "https://graph.microsoft.com/$graphApiVersion/$($Resource)"
-        Invoke-RestMethod -Uri $uri -Headers $authToken -Method Post -Body $Json -ContentType "application/json"
-    
-    }
-    
-    catch {
-
-    $ex = $_.Exception
-    $errorResponse = $ex.Response.GetResponseStream()
-    $reader = New-Object System.IO.StreamReader($errorResponse)
-    $reader.BaseStream.Position = 0
-    $reader.DiscardBufferedData()
-    $responseBody = $reader.ReadToEnd();
-    Write-Host "Response content:`n$responseBody" -f Red
-    Write-Error "Request to $Uri failed with HTTP Status $($ex.Response.StatusCode) $($ex.Response.StatusDescription)"
-    write-host
-    break
-
     }
 
 }
 
 ####################################################
 
-Function Test-JSON(){
+function Sync-AndroidManagedStoreAccount {
 
 <#
 .SYNOPSIS
-This function is used to test if the JSON passed to a REST Post request is valid
+This function is used to initiate an app sync for Managed Google Play via the Graph API REST interface
 .DESCRIPTION
-The function tests if the JSON passed to the REST Post is valid
+The function connects to the Graph API Interface and initiates a Managed Google Play app sync
 .EXAMPLE
-Test-JSON -JSON $JSON
-Test if the JSON is valid before calling the Graph REST interface
+Sync-AndroidManagedStoreAccount
+Initiates a Managed Google Play Sync in Intune
 .NOTES
-NAME: Test-JSON
+NAME: Sync-AndroidManagedStoreAccount
 #>
 
-param (
-
-$JSON
-
-)
-
+    
+$graphApiVersion = "beta"
+$Resource = "deviceManagement/androidManagedStoreAccountEnterpriseSettings/syncApps"
+    
     try {
 
-    $TestJSON = ConvertFrom-Json $JSON -ErrorAction Stop
-    $validJson = $true
-
+        $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource"
+        Invoke-RestMethod -Method Post -Uri $uri -Headers $authToken  
+        
     }
 
     catch {
 
-    $validJson = $false
-    $_.Exception
+        $ex = $_.Exception
+        $errorResponse = $ex.Response.GetResponseStream()
+        $reader = New-Object System.IO.StreamReader($errorResponse)
+        $reader.BaseStream.Position = 0
+        $reader.DiscardBufferedData()
+        $responseBody = $reader.ReadToEnd();
+        $line = $_.InvocationInfo.ScriptLineNumber
+        $msg = $ex.message
 
-    }
+        $ErrorMessage += "$responseBody`n"
+        $ErrorMessage += "Exception: $msg on line $line"
 
-    if (!$validJson){
-    
-    Write-Host "Provided JSON isn't in valid JSON format" -f Red
-    break
+        Write-Error $ErrorMessage
 
     }
 
@@ -347,82 +295,32 @@ $global:authToken = Get-AuthToken -User $User
 
 ####################################################
 
-Write-Host "Please specify which Intune Role you want to duplicate:" -ForegroundColor Yellow
-Write-Host
+if((Get-AndroidManagedStoreAccount).bindStatus -ne "notBound"){
 
-$RBAC_Roles = (Get-RBACRole | Where-Object { $_.isBuiltInRoleDefinition -eq $true } | Select-Object displayName).displayName
+    Write-Host "Found Managed Google Play Configuration. Performing Sync..." -ForegroundColor Yellow
+    
+    $ManagedPlaySync = Sync-AndroidManagedStoreAccount
+    
+    if($ManagedPlaySync -ne $null){
 
-$menu = @{}
-
-for ($i=1;$i -le $RBAC_Roles.count; $i++) 
-{ Write-Host "$i. $($RBAC_Roles[$i-1])" 
-$menu.Add($i,($RBAC_Roles[$i-1]))}
-
-Write-Host
-[int]$ans = Read-Host 'Enter Intune Role to Duplicate (Numerical value)'
-$selection = $menu.Item($ans)
-
-    if($selection){
-
-    Write-Host
-    Write-Host $selection -f Cyan
-    Write-Host
-
-    $RBAC_Role = (Get-RBACRole | Where-Object { $_.displayName -eq "$Selection" -and $_.isBuiltInRoleDefinition -eq $true })
-    $RBAC_Actions = $RBAC_Role.permissions.actions | ConvertTo-Json
-
-    $RBAC_DN = Read-Host "Please specify a displayName for the duplicated Intune Role"
-
-        if($RBAC_DN -eq ""){
-
-            Write-Host "Intune Role DisplayName can't be null, please specify a valid DisplayName..." -ForegroundColor Red
-            Write-Host
-            break
-
-        }
-
-        if(Get-RBACRole | Where-Object { $_.displayName -eq "$RBAC_DN"}){
-
-            Write-Host "A Custom Intune role with the name '$RBAC_DN' already exists..." -ForegroundColor Red
-            Write-Host
-            break
-
-        }
-
-$JSON = @"
-        {
-        "@odata.type": "#microsoft.graph.roleDefinition",
-        "displayName": "$RBAC_DN",
-        "description": "$RBAC_DN",
-        "permissions": [
-                {   
-                "actions": $RBAC_Actions
-                }
-            
-            ],
-            "isBuiltInRoleDefinition": false  
-        }
-"@
-
-        Write-Host
-        
-        $JSON
-        
-        Write-Host
-        Write-Host "Duplicating Intune Role and Adding to the Intune Service..." -ForegroundColor Yellow
-
-        Add-RBACRole -JSON $JSON
-
+        Write-Host "Starting sync with managed Google Play, Sync will take some time" -ForegroundColor Green
+    
     }
-
+    
     else {
-
-    Write-Host
-    Write-Host "Intune Role specified is invalid..." -f Red
-    Write-Host "Please specify a valid Intune Role..." -f Red
-    Write-Host
-    break
-
+        
+        $ManagedPlaySync
+        Write-Host "Managed Google Play sync was not successful" -ForegroundColor Red
+        break
+    
     }
+
+}
+    
+else {
+
+    Write-Host "No Managed Google Play configuration found for this tenant" -ForegroundColor Cyan
+
+}
 
 Write-Host

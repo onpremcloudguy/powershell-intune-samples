@@ -1,4 +1,4 @@
-
+﻿
 <#
 
 .COPYRIGHT
@@ -149,48 +149,30 @@ $authority = "https://login.microsoftonline.com/$Tenant"
 
 ####################################################
 
-Function Get-DeviceConfigurationPolicy(){
+Function Get-AndroidEnrollmentProfile {
 
 <#
 .SYNOPSIS
-This function is used to get device configuration policies from the Graph API REST interface
+Gets Android Enterprise Enrollment Profile
 .DESCRIPTION
-The function connects to the Graph API Interface and gets any device configuration policies
+Gets Android Enterprise Enrollment Profile
 .EXAMPLE
-Get-DeviceConfigurationPolicy
-Returns any device configuration policies configured in Intune
+Get-AndroidEnrollmentProfile
 .NOTES
-NAME: Get-DeviceConfigurationPolicy
+NAME: Get-AndroidEnrollmentProfile
 #>
 
-[cmdletbinding()]
-
-param
-(
-    $name
-)
-
 $graphApiVersion = "Beta"
-$DCP_resource = "deviceManagement/deviceConfigurations"
-
+$Resource = "deviceManagement/androidDeviceOwnerEnrollmentProfiles"
+    
     try {
-
-        if($Name){
-
-        $uri = "https://graph.microsoft.com/$graphApiVersion/$($DCP_resource)"
-        (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value | Where-Object { ($_.'displayName').contains("$Name") }
-
-        }
-
-        else {
-
-        $uri = "https://graph.microsoft.com/$graphApiVersion/$($DCP_resource)"
-        (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value
-
-        }
-
+        
+        $now = (Get-Date -Format s)    
+        $uri = "https://graph.microsoft.com/$graphApiVersion/$($Resource)?`$filter=tokenExpirationDateTime gt $($now)z"
+        (Invoke-RestMethod -Uri $uri –Headers $authToken –Method Get).value
+    
     }
-
+    
     catch {
 
     $ex = $_.Exception
@@ -210,139 +192,36 @@ $DCP_resource = "deviceManagement/deviceConfigurations"
 
 ####################################################
 
-Function Get-DeviceConfigurationPolicyAssignment(){
+Function Get-AndroidQRCode{
 
 <#
 .SYNOPSIS
-This function is used to get device configuration policy assignment from the Graph API REST interface
+Gets Android Device Owner Enrollment Profile QRCode Image
 .DESCRIPTION
-The function connects to the Graph API Interface and gets a device configuration policy assignment
+Gets Android Device Owner Enrollment Profile QRCode Image
 .EXAMPLE
-Get-DeviceConfigurationPolicyAssignment $id guid
-Returns any device configuration policy assignment configured in Intune
+Get-AndroidQRCode
 .NOTES
-NAME: Get-DeviceConfigurationPolicyAssignment
+NAME: Get-AndroidQRCode
 #>
 
 [cmdletbinding()]
 
-param
-(
-    [Parameter(Mandatory=$true,HelpMessage="Enter id (guid) for the Device Configuration Policy you want to check assignment")]
-    $id
+Param(
+[parameter(Mandatory=$true)]
+[string]$Profileid
 )
 
 $graphApiVersion = "Beta"
-$DCP_resource = "deviceManagement/deviceConfigurations"
 
     try {
-
-    $uri = "https://graph.microsoft.com/$graphApiVersion/$($DCP_resource)/$id/groupAssignments"
-    (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value
-
+            
+        $Resource = "deviceManagement/androidDeviceOwnerEnrollmentProfiles/$($Profileid)?`$select=qrCodeImage"
+        $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource"
+        (Invoke-RestMethod -Uri $uri –Headers $authToken –Method Get)
+                    
     }
-
-    catch {
-
-    $ex = $_.Exception
-    $errorResponse = $ex.Response.GetResponseStream()
-    $reader = New-Object System.IO.StreamReader($errorResponse)
-    $reader.BaseStream.Position = 0
-    $reader.DiscardBufferedData()
-    $responseBody = $reader.ReadToEnd();
-    Write-Host "Response content:`n$responseBody" -f Red
-    Write-Error "Request to $Uri failed with HTTP Status $($ex.Response.StatusCode) $($ex.Response.StatusDescription)"
-    write-host
-    break
-
-    }
-
-}
-
-####################################################
-
-Function Get-AADGroup(){
-
-<#
-.SYNOPSIS
-This function is used to get AAD Groups from the Graph API REST interface
-.DESCRIPTION
-The function connects to the Graph API Interface and gets any Groups registered with AAD
-.EXAMPLE
-Get-AADGroup
-Returns all users registered with Azure AD
-.NOTES
-NAME: Get-AADGroup
-#>
-
-[cmdletbinding()]
-
-param
-(
-    $GroupName,
-    $id,
-    [switch]$Members
-)
-
-# Defining Variables
-$graphApiVersion = "v1.0"
-$Group_resource = "groups"
-# pseudo-group identifiers for all users and all devices
-[string]$AllUsers   = "acacacac-9df4-4c7d-9d50-4ef0226f57a9"
-[string]$AllDevices = "adadadad-808e-44e2-905a-0b7873a8a531"
-
-    try {
-
-        if($id){
-
-        $uri = "https://graph.microsoft.com/$graphApiVersion/$($Group_resource)?`$filter=id eq '$id'"
-        switch ( $id ) {
-                $AllUsers   { $grp = [PSCustomObject]@{ displayName = "All users"}; $grp           }
-                $AllDevices { $grp = [PSCustomObject]@{ displayName = "All devices"}; $grp         }
-                default     { (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value  }
-                }
-                
-        }
-
-        elseif($GroupName -eq "" -or $GroupName -eq $null){
-
-        $uri = "https://graph.microsoft.com/$graphApiVersion/$($Group_resource)"
-        (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value
-
-        }
-
-        else {
-
-            if(!$Members){
-
-            $uri = "https://graph.microsoft.com/$graphApiVersion/$($Group_resource)?`$filter=displayname eq '$GroupName'"
-            (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value
-
-            }
-
-            elseif($Members){
-
-            $uri = "https://graph.microsoft.com/$graphApiVersion/$($Group_resource)?`$filter=displayname eq '$GroupName'"
-            $Group = (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value
-
-                if($Group){
-
-                $GID = $Group.id
-
-                $Group.displayName
-                write-host
-
-                $uri = "https://graph.microsoft.com/$graphApiVersion/$($Group_resource)/$GID/Members"
-                (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value
-
-                }
-
-            }
-
-        }
-
-    }
-
+    
     catch {
 
     $ex = $_.Exception
@@ -414,41 +293,154 @@ $global:authToken = Get-AuthToken -User $User
 
 ####################################################
 
-$DCPs = Get-DeviceConfigurationPolicy
+$parent = [System.IO.Path]::GetTempPath()
+[string] $name = [System.Guid]::NewGuid()
+New-Item -ItemType Directory -Path (Join-Path $parent $name) | Out-Null
+$TempDirPath = "$parent$name"
 
-write-host
+####################################################
 
-foreach($DCP in $DCPs){
+$Profiles = Get-AndroidEnrollmentProfile
 
-write-host "Device Configuration Policy:"$DCP.displayName -f Yellow
-write-host
-$DCP
+if($profiles){
 
-$id = $DCP.id
+$profilecount = @($profiles).count
 
-$DCPA = Get-DeviceConfigurationPolicyAssignment -id $id
-write-host "Getting Configuration Policy assignment..." -f Cyan
-    if($DCPA){
-    if($DCPA.count -gt 1){
+    if(@($profiles).count -gt 1){
 
-            foreach($group in $DCPA){
+    Write-Host "Corporate-owned dedicated device profiles found: $profilecount"
+    Write-Host
 
-            (Get-AADGroup -id $group.targetGroupId).displayName
+    $COSUprofiles = $profiles.Displayname | Sort-Object -Unique
 
-            }
+    $menu = @{}
+
+    for ($i=1;$i -le $COSUprofiles.count; $i++) 
+    { Write-Host "$i. $($COSUprofiles[$i-1])" 
+    $menu.Add($i,($COSUprofiles[$i-1]))}
+
+    Write-Host
+    $ans = Read-Host 'Choose a profile (numerical value)'
+
+    if($ans -eq "" -or $ans -eq $null){
+
+        Write-Host "Corporate-owned dedicated device profile can't be null, please specify a valid Profile..." -ForegroundColor Red
+        Write-Host
+        break
+
+    }
+
+    elseif(($ans -match "^[\d\.]+$") -eq $true){
+
+    $selection = $menu.Item([int]$ans)
+
+    Write-Host
+
+        if($selection){
+
+            $SelectedProfile = $profiles | ? { $_.DisplayName -eq "$Selection" }
+
+            $SelectedProfileID = $SelectedProfile | select -ExpandProperty id
+
+            $ProfileID = $SelectedProfileID
+
+            $ProfileDisplayName = $SelectedProfile.displayName
 
         }
 
         else {
 
-        (Get-AADGroup -id $DCPA.targetGroupId).displayName
+            Write-Host "Corporate-owned dedicated device profile selection invalid, please specify a valid Profile..." -ForegroundColor Red
+            Write-Host
+            break
 
         }
 
     }
+
     else {
-        Write-Host "No assignments found."
+
+        Write-Host "Corporate-owned dedicated device profile selection invalid, please specify a valid Profile..." -ForegroundColor Red
+        Write-Host
+        break
+
     }
+
+}
+
+    elseif(@($profiles).count -eq 1){
+
+        $Profileid = (Get-AndroidEnrollmentProfile).id
+        $ProfileDisplayName = (Get-AndroidEnrollmentProfile).displayname
+    
+        Write-Host "Found a Corporate-owned dedicated devices profile '$ProfileDisplayName'..."
+        Write-Host
+
+    }
+
+    else {
+
+        Write-Host
+        write-host "No enrollment profiles found!" -f Yellow
+        break
+
+    }
+
+Write-Warning "You are about to export the QR code for the Dedicated Device Enrollment Profile '$ProfileDisplayName'"
+Write-Warning "Anyone with this QR code can Enrol a device into your tenant. Please ensure it is kept secure."
+Write-Warning "If you accidentally share the QR code, you can immediately expire it in the Intune UI."
+write-warning "Devices already enrolled will be unaffected."
+Write-Host
+Write-Host "Show token? [Y]es, [N]o"
+
+$FinalConfirmation = Read-Host
+
+    if ($FinalConfirmation -ne "y"){
+    
+        Write-Host "Exiting..."
+        Write-Host
+        break
+
+    }
+
+    else {
+
+    Write-Host
+
+    $QR = (Get-AndroidQRCode -Profileid $ProfileID)
+    
+    $QRType = $QR.qrCodeImage.type
+    $QRValue = $QR.qrCodeImage.value
+ 
+    $imageType = $QRType.split("/")[1]
+ 
+    $filename = "$TempDirPath\$ProfileDisplayName.$imageType"
+
+    $bytes = [Convert]::FromBase64String($QRValue)
+    [IO.File]::WriteAllBytes($filename, $bytes)
+
+        if (Test-Path $filename){
+
+            Write-Host "Success: " -NoNewline -ForegroundColor Green
+            write-host "QR code exported to " -NoNewline
+            Write-Host "$filename" -ForegroundColor Yellow
+            Write-Host
+
+        }
+
+        else {
+        
+            write-host "Oops! Something went wrong!" -ForegroundColor Red
+        
+        }
+       
+    }
+
+}
+
+else {
+
+    Write-Host "No Corporate-owned dedicated device Profiles found..." -ForegroundColor Yellow
     Write-Host
 
 }

@@ -1,5 +1,4 @@
-
-<#
+﻿<#
 
 .COPYRIGHT
 Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT license.
@@ -149,48 +148,37 @@ $authority = "https://login.microsoftonline.com/$Tenant"
 
 ####################################################
 
-Function Get-DeviceConfigurationPolicy(){
+Function Sync-AppleDEP(){
 
 <#
 .SYNOPSIS
-This function is used to get device configuration policies from the Graph API REST interface
+Sync Intune tenant to Apple DEP service
 .DESCRIPTION
-The function connects to the Graph API Interface and gets any device configuration policies
+Intune automatically syncs with the Apple DEP service once every 24hrs. This function synchronises your Intune tenant with the Apple DEP service.
 .EXAMPLE
-Get-DeviceConfigurationPolicy
-Returns any device configuration policies configured in Intune
+Sync-AppleDEP
 .NOTES
-NAME: Get-DeviceConfigurationPolicy
+NAME: Sync-AppleDEP
 #>
 
 [cmdletbinding()]
 
-param
-(
-    $name
+Param(
+[parameter(Mandatory=$true)]
+[string]$id
 )
 
-$graphApiVersion = "Beta"
-$DCP_resource = "deviceManagement/deviceConfigurations"
+
+$graphApiVersion = "beta"
+$Resource = "deviceManagement/depOnboardingSettings/$id/syncWithAppleDeviceEnrollmentProgram"
 
     try {
 
-        if($Name){
-
-        $uri = "https://graph.microsoft.com/$graphApiVersion/$($DCP_resource)"
-        (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value | Where-Object { ($_.'displayName').contains("$Name") }
+        $SyncURI = "https://graph.microsoft.com/$graphApiVersion/$($resource)"
+        Invoke-RestMethod -Uri $SyncURI -Headers $authToken -Method Post
 
         }
-
-        else {
-
-        $uri = "https://graph.microsoft.com/$graphApiVersion/$($DCP_resource)"
-        (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value
-
-        }
-
-    }
-
+    
     catch {
 
     $ex = $_.Exception
@@ -210,139 +198,49 @@ $DCP_resource = "deviceManagement/deviceConfigurations"
 
 ####################################################
 
-Function Get-DeviceConfigurationPolicyAssignment(){
+Function Get-DEPOnboardingSettings {
 
 <#
 .SYNOPSIS
-This function is used to get device configuration policy assignment from the Graph API REST interface
+This function retrieves the DEP onboarding settings for your tenant. DEP Onboarding settings contain information such as Token ID, which is used to sync DEP and VPP
 .DESCRIPTION
-The function connects to the Graph API Interface and gets a device configuration policy assignment
+The function connects to the Graph API Interface and gets a retrieves the DEP onboarding settings.
 .EXAMPLE
-Get-DeviceConfigurationPolicyAssignment $id guid
-Returns any device configuration policy assignment configured in Intune
+Get-DEPOnboardingSettings
+Gets all DEP Onboarding Settings for each DEP token present in the tenant
 .NOTES
-NAME: Get-DeviceConfigurationPolicyAssignment
+NAME: Get-DEPOnboardingSettings
 #>
 
 [cmdletbinding()]
 
-param
-(
-    [Parameter(Mandatory=$true,HelpMessage="Enter id (guid) for the Device Configuration Policy you want to check assignment")]
-    $id
+Param(
+[parameter(Mandatory=$false)]
+[string]$tokenid
 )
 
-$graphApiVersion = "Beta"
-$DCP_resource = "deviceManagement/deviceConfigurations"
+$graphApiVersion = "beta"
 
     try {
 
-    $uri = "https://graph.microsoft.com/$graphApiVersion/$($DCP_resource)/$id/groupAssignments"
-    (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value
-
-    }
-
-    catch {
-
-    $ex = $_.Exception
-    $errorResponse = $ex.Response.GetResponseStream()
-    $reader = New-Object System.IO.StreamReader($errorResponse)
-    $reader.BaseStream.Position = 0
-    $reader.DiscardBufferedData()
-    $responseBody = $reader.ReadToEnd();
-    Write-Host "Response content:`n$responseBody" -f Red
-    Write-Error "Request to $Uri failed with HTTP Status $($ex.Response.StatusCode) $($ex.Response.StatusDescription)"
-    write-host
-    break
-
-    }
-
-}
-
-####################################################
-
-Function Get-AADGroup(){
-
-<#
-.SYNOPSIS
-This function is used to get AAD Groups from the Graph API REST interface
-.DESCRIPTION
-The function connects to the Graph API Interface and gets any Groups registered with AAD
-.EXAMPLE
-Get-AADGroup
-Returns all users registered with Azure AD
-.NOTES
-NAME: Get-AADGroup
-#>
-
-[cmdletbinding()]
-
-param
-(
-    $GroupName,
-    $id,
-    [switch]$Members
-)
-
-# Defining Variables
-$graphApiVersion = "v1.0"
-$Group_resource = "groups"
-# pseudo-group identifiers for all users and all devices
-[string]$AllUsers   = "acacacac-9df4-4c7d-9d50-4ef0226f57a9"
-[string]$AllDevices = "adadadad-808e-44e2-905a-0b7873a8a531"
-
-    try {
-
-        if($id){
-
-        $uri = "https://graph.microsoft.com/$graphApiVersion/$($Group_resource)?`$filter=id eq '$id'"
-        switch ( $id ) {
-                $AllUsers   { $grp = [PSCustomObject]@{ displayName = "All users"}; $grp           }
-                $AllDevices { $grp = [PSCustomObject]@{ displayName = "All devices"}; $grp         }
-                default     { (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value  }
-                }
+        if ($tokenid){
+        
+        $Resource = "deviceManagement/depOnboardingSettings/$tokenid/"
+        $uri = "https://graph.microsoft.com/$graphApiVersion/$($Resource)"
+        (Invoke-RestMethod -Uri $uri –Headers $authToken –Method Get)
                 
         }
 
-        elseif($GroupName -eq "" -or $GroupName -eq $null){
-
-        $uri = "https://graph.microsoft.com/$graphApiVersion/$($Group_resource)"
-        (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value
-
-        }
-
         else {
-
-            if(!$Members){
-
-            $uri = "https://graph.microsoft.com/$graphApiVersion/$($Group_resource)?`$filter=displayname eq '$GroupName'"
-            (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value
-
-            }
-
-            elseif($Members){
-
-            $uri = "https://graph.microsoft.com/$graphApiVersion/$($Group_resource)?`$filter=displayname eq '$GroupName'"
-            $Group = (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value
-
-                if($Group){
-
-                $GID = $Group.id
-
-                $Group.displayName
-                write-host
-
-                $uri = "https://graph.microsoft.com/$graphApiVersion/$($Group_resource)/$GID/Members"
-                (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value
-
-                }
-
-            }
-
+        
+        $Resource = "deviceManagement/depOnboardingSettings/"
+        $uri = "https://graph.microsoft.com/$graphApiVersion/$($Resource)"
+        (Invoke-RestMethod -Uri $uri –Headers $authToken –Method Get).value
+        
         }
-
+               
     }
-
+    
     catch {
 
     $ex = $_.Exception
@@ -358,7 +256,7 @@ $Group_resource = "groups"
 
     }
 
-}
+} 
 
 ####################################################
 
@@ -414,41 +312,89 @@ $global:authToken = Get-AuthToken -User $User
 
 ####################################################
 
-$DCPs = Get-DeviceConfigurationPolicy
+$tokens = (Get-DEPOnboardingSettings)
 
-write-host
+if($tokens){
 
-foreach($DCP in $DCPs){
+$tokencount = @($tokens).count
 
-write-host "Device Configuration Policy:"$DCP.displayName -f Yellow
-write-host
-$DCP
+Write-Host "DEP tokens found: $tokencount"
+Write-Host
 
-$id = $DCP.id
+    if($tokencount -gt 1){
 
-$DCPA = Get-DeviceConfigurationPolicyAssignment -id $id
-write-host "Getting Configuration Policy assignment..." -f Cyan
-    if($DCPA){
-    if($DCPA.count -gt 1){
+    $DEP_Tokens = $tokens.tokenName | Sort-Object -Unique
 
-            foreach($group in $DCPA){
+    $menu = @{}
 
-            (Get-AADGroup -id $group.targetGroupId).displayName
+    for ($i=1;$i -le $DEP_Tokens.count; $i++) 
+    { Write-Host "$i. $($DEP_Tokens[$i-1])" 
+    $menu.Add($i,($DEP_Tokens[$i-1]))}
 
-            }
-
-        }
-
-        else {
-
-        (Get-AADGroup -id $DCPA.targetGroupId).displayName
-
-        }
-
-    }
-    else {
-        Write-Host "No assignments found."
-    }
     Write-Host
+    [int]$ans = Read-Host 'Select the token you wish to sync (numerical value)'
+    $selection = $menu.Item($ans)
+    Write-Host
+
+        if($selection){
+
+        $SelectedToken = $tokens | Where-Object { $_.TokenName -eq "$Selection" }
+
+        $SelectedTokenId = $SelectedToken | Select-Object -ExpandProperty id
+
+        $id = $SelectedTokenId
+
+        }
+
+    }
+
+    elseif ($tokencount -eq 1){
+
+        $id = (Get-DEPOnboardingSettings).id
+
+        }
+
+    else {
+    
+        Write-Host
+        Write-Warning "No DEP tokens found!"
+        break
+
+    }
+
+    $LastSync = (Get-DEPOnboardingSettings -tokenid $id).lastSyncTriggeredDateTime
+    $TokenDisplayName = (Get-DEPOnboardingSettings -tokenid $id).TokenName
+
+    $CurrentTime = [System.DateTimeOffset]::Now
+
+    $LastSyncTime = [datetimeoffset]::Parse($LastSync)
+
+    $TimeDifference = ($CurrentTime - $LastSyncTime)
+
+    $TotalMinutes = ($TimeDifference.Minutes)
+
+    $RemainingTimeToSync = (15 - [int]$TotalMinutes)
+
+        if ($RemainingTimeToSync -gt 0 -AND $RemainingTimeToSync -lt 16) {
+
+            Write-Warning "Syncing in progress. You can retry sync in $RemainingTimeToSync minutes"
+            Write-Host
+
+        } 
+           
+        else {
+    
+            Write-Host "Syncing '$TokenDisplayName' DEP token with Apple DEP service..."
+            Sync-AppleDEP $id
+
+        }
+
+}
+
+else {
+
+    Write-Warning "No DEP tokens found!"
+    Write-Host
+    break
 
 }

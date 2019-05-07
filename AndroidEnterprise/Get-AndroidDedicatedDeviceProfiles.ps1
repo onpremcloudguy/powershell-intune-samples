@@ -1,5 +1,4 @@
-
-<#
+﻿<#
 
 .COPYRIGHT
 Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT license.
@@ -149,200 +148,30 @@ $authority = "https://login.microsoftonline.com/$Tenant"
 
 ####################################################
 
-Function Get-DeviceConfigurationPolicy(){
+Function Get-AndroidEnrollmentProfile {
 
 <#
 .SYNOPSIS
-This function is used to get device configuration policies from the Graph API REST interface
+Gets Android Enterprise Enrollment Profile
 .DESCRIPTION
-The function connects to the Graph API Interface and gets any device configuration policies
+Gets Android Enterprise Enrollment Profile
 .EXAMPLE
-Get-DeviceConfigurationPolicy
-Returns any device configuration policies configured in Intune
+Get-AndroidEnrollmentProfile
 .NOTES
-NAME: Get-DeviceConfigurationPolicy
+NAME: Get-AndroidEnrollmentProfile
 #>
-
-[cmdletbinding()]
-
-param
-(
-    $name
-)
 
 $graphApiVersion = "Beta"
-$DCP_resource = "deviceManagement/deviceConfigurations"
-
+$Resource = "deviceManagement/androidDeviceOwnerEnrollmentProfiles"
+    
     try {
-
-        if($Name){
-
-        $uri = "https://graph.microsoft.com/$graphApiVersion/$($DCP_resource)"
-        (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value | Where-Object { ($_.'displayName').contains("$Name") }
-
-        }
-
-        else {
-
-        $uri = "https://graph.microsoft.com/$graphApiVersion/$($DCP_resource)"
-        (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value
-
-        }
-
+        
+        $now = (Get-Date -Format s)    
+        $uri = "https://graph.microsoft.com/$graphApiVersion/$($Resource)?`$filter=tokenExpirationDateTime gt $($now)z"
+        (Invoke-RestMethod -Uri $uri –Headers $authToken –Method Get).value
+            
     }
-
-    catch {
-
-    $ex = $_.Exception
-    $errorResponse = $ex.Response.GetResponseStream()
-    $reader = New-Object System.IO.StreamReader($errorResponse)
-    $reader.BaseStream.Position = 0
-    $reader.DiscardBufferedData()
-    $responseBody = $reader.ReadToEnd();
-    Write-Host "Response content:`n$responseBody" -f Red
-    Write-Error "Request to $Uri failed with HTTP Status $($ex.Response.StatusCode) $($ex.Response.StatusDescription)"
-    write-host
-    break
-
-    }
-
-}
-
-####################################################
-
-Function Get-DeviceConfigurationPolicyAssignment(){
-
-<#
-.SYNOPSIS
-This function is used to get device configuration policy assignment from the Graph API REST interface
-.DESCRIPTION
-The function connects to the Graph API Interface and gets a device configuration policy assignment
-.EXAMPLE
-Get-DeviceConfigurationPolicyAssignment $id guid
-Returns any device configuration policy assignment configured in Intune
-.NOTES
-NAME: Get-DeviceConfigurationPolicyAssignment
-#>
-
-[cmdletbinding()]
-
-param
-(
-    [Parameter(Mandatory=$true,HelpMessage="Enter id (guid) for the Device Configuration Policy you want to check assignment")]
-    $id
-)
-
-$graphApiVersion = "Beta"
-$DCP_resource = "deviceManagement/deviceConfigurations"
-
-    try {
-
-    $uri = "https://graph.microsoft.com/$graphApiVersion/$($DCP_resource)/$id/groupAssignments"
-    (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value
-
-    }
-
-    catch {
-
-    $ex = $_.Exception
-    $errorResponse = $ex.Response.GetResponseStream()
-    $reader = New-Object System.IO.StreamReader($errorResponse)
-    $reader.BaseStream.Position = 0
-    $reader.DiscardBufferedData()
-    $responseBody = $reader.ReadToEnd();
-    Write-Host "Response content:`n$responseBody" -f Red
-    Write-Error "Request to $Uri failed with HTTP Status $($ex.Response.StatusCode) $($ex.Response.StatusDescription)"
-    write-host
-    break
-
-    }
-
-}
-
-####################################################
-
-Function Get-AADGroup(){
-
-<#
-.SYNOPSIS
-This function is used to get AAD Groups from the Graph API REST interface
-.DESCRIPTION
-The function connects to the Graph API Interface and gets any Groups registered with AAD
-.EXAMPLE
-Get-AADGroup
-Returns all users registered with Azure AD
-.NOTES
-NAME: Get-AADGroup
-#>
-
-[cmdletbinding()]
-
-param
-(
-    $GroupName,
-    $id,
-    [switch]$Members
-)
-
-# Defining Variables
-$graphApiVersion = "v1.0"
-$Group_resource = "groups"
-# pseudo-group identifiers for all users and all devices
-[string]$AllUsers   = "acacacac-9df4-4c7d-9d50-4ef0226f57a9"
-[string]$AllDevices = "adadadad-808e-44e2-905a-0b7873a8a531"
-
-    try {
-
-        if($id){
-
-        $uri = "https://graph.microsoft.com/$graphApiVersion/$($Group_resource)?`$filter=id eq '$id'"
-        switch ( $id ) {
-                $AllUsers   { $grp = [PSCustomObject]@{ displayName = "All users"}; $grp           }
-                $AllDevices { $grp = [PSCustomObject]@{ displayName = "All devices"}; $grp         }
-                default     { (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value  }
-                }
-                
-        }
-
-        elseif($GroupName -eq "" -or $GroupName -eq $null){
-
-        $uri = "https://graph.microsoft.com/$graphApiVersion/$($Group_resource)"
-        (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value
-
-        }
-
-        else {
-
-            if(!$Members){
-
-            $uri = "https://graph.microsoft.com/$graphApiVersion/$($Group_resource)?`$filter=displayname eq '$GroupName'"
-            (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value
-
-            }
-
-            elseif($Members){
-
-            $uri = "https://graph.microsoft.com/$graphApiVersion/$($Group_resource)?`$filter=displayname eq '$GroupName'"
-            $Group = (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value
-
-                if($Group){
-
-                $GID = $Group.id
-
-                $Group.displayName
-                write-host
-
-                $uri = "https://graph.microsoft.com/$graphApiVersion/$($Group_resource)/$GID/Members"
-                (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value
-
-                }
-
-            }
-
-        }
-
-    }
-
+    
     catch {
 
     $ex = $_.Exception
@@ -414,41 +243,24 @@ $global:authToken = Get-AuthToken -User $User
 
 ####################################################
 
-$DCPs = Get-DeviceConfigurationPolicy
+$Profiles = Get-AndroidEnrollmentProfile
 
-write-host
+if($Profiles){
 
-foreach($DCP in $DCPs){
+Write-Host "Corporate-owned dedicated device Profiles found..." -ForegroundColor Green
 
-write-host "Device Configuration Policy:"$DCP.displayName -f Yellow
-write-host
-$DCP
+    foreach ($Profile in $Profiles){
 
-$id = $DCP.id
-
-$DCPA = Get-DeviceConfigurationPolicyAssignment -id $id
-write-host "Getting Configuration Policy assignment..." -f Cyan
-    if($DCPA){
-    if($DCPA.count -gt 1){
-
-            foreach($group in $DCPA){
-
-            (Get-AADGroup -id $group.targetGroupId).displayName
-
-            }
-
-        }
-
-        else {
-
-        (Get-AADGroup -id $DCPA.targetGroupId).displayName
-
-        }
+        $Profile
 
     }
-    else {
-        Write-Host "No assignments found."
-    }
-    Write-Host
 
 }
+
+else {
+
+Write-Host "No Corporate-owned dedicated device Profiles found..." -ForegroundColor Yellow
+
+}
+
+Write-Host

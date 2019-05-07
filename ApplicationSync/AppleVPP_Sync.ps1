@@ -1,3 +1,4 @@
+﻿
 <#
 
 .COPYRIGHT
@@ -27,8 +28,7 @@ NAME: Get-AuthToken
 param
 (
     [Parameter(Mandatory=$true)]
-    $User,
-    $Password
+    $User
 )
 
 $userUpn = New-Object "System.Net.Mail.MailAddress" -ArgumentList $User
@@ -103,17 +103,11 @@ $authority = "https://login.microsoftonline.com/$Tenant"
     # https://msdn.microsoft.com/en-us/library/azure/microsoft.identitymodel.clients.activedirectory.promptbehavior.aspx
     # Change the prompt behaviour to force credentials each time: Auto, Always, Never, RefreshSession
 
-    $platformParameters = New-Object "Microsoft.IdentityModel.Clients.ActiveDirectory.PlatformParameters" -ArgumentList "Always"
+    $platformParameters = New-Object "Microsoft.IdentityModel.Clients.ActiveDirectory.PlatformParameters" -ArgumentList "Auto"
 
-    if ($Password -eq $null) {
-        $userId = New-Object "Microsoft.IdentityModel.Clients.ActiveDirectory.UserIdentifier" -ArgumentList ($User, "OptionalDisplayableId")
-        $authResult = $authContext.AcquireTokenAsync($resourceAppIdURI, $clientId, $redirectUri, $platformParameters).Result
-    }
-    else {
-        $userCred = New-Object "Microsoft.IdentityModel.Clients.ActiveDirectory.UserCredential" -ArgumentList $User, $Password
-        $authResult = $authContext.AcquireTokenAsync($resourceAppIdURI, $userCred).Result
-    }
+    $userId = New-Object "Microsoft.IdentityModel.Clients.ActiveDirectory.UserIdentifier" -ArgumentList ($User, "OptionalDisplayableId")
 
+    $authResult = $authContext.AcquireTokenAsync($resourceAppIdURI,$clientId,$redirectUri,$platformParameters,$userId).Result
 
         # If the accesstoken is valid then create the authentication header
 
@@ -155,115 +149,42 @@ $authority = "https://login.microsoftonline.com/$Tenant"
 
 ####################################################
 
-Function Test-JSON(){
+Function Sync-AppleVPP(){
 
 <#
 .SYNOPSIS
-This function is used to test if the JSON passed to a REST Post request is valid
+Sync Intune tenant to Apple VPP service
 .DESCRIPTION
-The function tests if the JSON passed to the REST Post is valid
+Intune automatically syncs with the Apple VPP service once every 15hrs. This function synchronises your Intune tenant with the Apple VPP service.
 .EXAMPLE
-Test-JSON -JSON $JSON
-Test if the JSON is valid before calling the Graph REST interface
+Sync-AppleVPP
 .NOTES
-NAME: Test-JSON
-#>
-
-param (
-
-$JSON
-
-)
-
-    try {
-
-    $TestJSON = ConvertFrom-Json $JSON -ErrorAction Stop
-    $validJson = $true
-
-    }
-
-    catch {
-
-    $validJson = $false
-    $_.Exception
-
-    }
-
-    if (!$validJson){
-
-    Write-Host "Provided JSON isn't in valid JSON format" -f Red
-    break
-
-    }
-
-}
-
-####################################################
-
-Function Assign-ProfileToDevices(){
-<#
-.SYNOPSIS
-This function is used to assign a profile to given devices using the Graph API REST interface
-.DESCRIPTION
-The function connects to the Graph API Interface and assigns a profile to given devices
-.EXAMPLE
-Assign-ProfileToDevices
-Assigns a profile to given devices in Intune
-.NOTES
-NAME: Assign-ProfileToDevices
+NAME: Sync-AppleVPP
 #>
 
 [cmdletbinding()]
 
-param
-(
-    $Devices,
-    $ProfileId
+Param(
+[parameter(Mandatory=$true)]
+[string]$id
 )
 
-$graphApiVersion = "Beta"
-$ResourceSegment = "deviceManagement/enrollmentProfiles('{0}')/updateDeviceProfileAssignment"
+
+$graphApiVersion = "beta"
+$Resource = "deviceAppManagement/vppTokens/$id/syncLicenses"
+
 
     try {
 
-        if([string]::IsNullOrWhiteSpace($ProfileId)){
+        $SyncURI = "https://graph.microsoft.com/$graphApiVersion/$($resource)"
 
-        $ProfileId = Read-Host -Prompt "Please specify profile Id to assign to devices"
-        Write-Host
-
-        }
-
-        $id = [Guid]::NewGuid();
-        if([string]::IsNullOrWhiteSpace($ProfileId) -or ![Guid]::TryParse($ProfileId, [ref]$id)){
-
-            write-host "Invalid ProfileId specified, please specify valid ProfileId to assign to devices..." -f Red
+        Write-Host "Syncing $TokenDisplayName with Apple VPP service..."
+        Invoke-RestMethod -Uri $SyncURI -Headers $authToken -Method Post
 
         }
-        elseif ($Devices -eq $null -or $Devices.Count -eq 0){
-
-            write-host "No devices specified, please specify a list of devices to assign..." -f Red
-        }
-        else {
-
-            $Resource = "deviceManagement/enrollmentProfiles('$ProfileId')/updateDeviceProfileAssignment"
-
-            $DevicesArray = $Devices -split "," 
-
-            $JSON = @{ "deviceIds" = $DevicesArray } | ConvertTo-Json
-
-            Test-JSON -JSON $JSON
-
-            $uri = "https://graph.microsoft.com/$graphApiVersion/$($Resource)"
-            Invoke-RestMethod -Uri $uri -Headers $authToken -Method Post -Body $JSON -ContentType "application/json"
-
-            Write-Host "Devices assigned!" -f Green
-        }
-
-    }
-
+    
     catch {
 
-    Write-Host
     $ex = $_.Exception
     $errorResponse = $ex.Response.GetResponseStream()
     $reader = New-Object System.IO.StreamReader($errorResponse)
@@ -281,66 +202,38 @@ $ResourceSegment = "deviceManagement/enrollmentProfiles('{0}')/updateDeviceProfi
 
 ####################################################
 
-Function Get-UnAssignedDevices(){
+Function Get-VPPToken{
 
 <#
 .SYNOPSIS
-This function is used to get all un-assigned bulk devices using the Graph API REST interface
+Gets all Apple VPP Tokens
 .DESCRIPTION
-The function connects to the Graph API Interface and gets all un-assigned bulk devices
+Gets all Apple VPP Tokens configured in the Service.
 .EXAMPLE
-Get-UnAssignedDevices
-Gets all un-assigned bulk devices
+Get-VPPToken
 .NOTES
-NAME: Get-UnAssignedDevices
+NAME: Get-VPPToken
 #>
 
 [cmdletbinding()]
 
-param
-(
+Param(
+[parameter(Mandatory=$false)]
+[string]$tokenid
 )
 
-$graphApiVersion = "Beta"
-$ResourceSegment = "deviceManagement/importedAppleDeviceIdentities?`$filter=discoverySource eq 'deviceEnrollmentProgram'"
-
+$graphApiVersion = "beta"
+$Resource = "deviceAppManagement/vppTokens"
+    
     try {
-
-        [System.String]$devicesNextLink = ''
-        [System.String[]]$unAssignedDevices = @()
-        [System.Uri]$uri = "https://graph.microsoft.com/$graphApiVersion/$($ResourceSegment)"
-
-        DO
-        {
-            $response = Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get -ContentType "application/json"
-            $devicesNextLink = $response."@odata.nextLink"
-            $uri = $devicesNextLink
-
-            foreach($device in $response.value)
-            {
-                write-host "SerialNumber: " $device.SerialNumber "RequestedEnrollmentProfileId: " $device.RequestedEnrollmentProfileId "`n"
-
-                if ([string]::IsNullOrEmpty($device.RequestedEnrollmentProfileId)) 
-                {
-                    $unAssignedDevices += $device.SerialNumber
-                }
-
-                if ($unAssignedDevices.Count -ge 1000)
-                {
-                   $devicesNextLink = ''
-                   break
-                }
-            }
-        }While(![string]::IsNullOrEmpty($devicesNextLink))
-
-        Write-Host $unAssignedDevices -f Yellow
-
-        return $unAssignedDevices
+                
+        $uri = "https://graph.microsoft.com/$graphApiVersion/$($Resource)"
+        (Invoke-RestMethod -Uri $uri –Headers $authToken –Method Get).value
+            
     }
-
+    
     catch {
 
-    Write-Host
     $ex = $_.Exception
     $errorResponse = $ex.Response.GetResponseStream()
     $reader = New-Object System.IO.StreamReader($errorResponse)
@@ -354,7 +247,7 @@ $ResourceSegment = "deviceManagement/importedAppleDeviceIdentities?`$filter=disc
 
     }
 
-}
+} 
 
 ####################################################
 
@@ -402,7 +295,7 @@ else {
     }
 
 # Getting the authorization token
- $global:authToken = Get-AuthToken -User $User
+$global:authToken = Get-AuthToken -User $User
 
 }
 
@@ -410,7 +303,78 @@ else {
 
 ####################################################
 
-$global:devices = Get-UnAssignedDevices
-$global:profileId = ''
+$tokens = (Get-VPPToken)
 
-Assign-ProfileToDevices -Devices $global:devices -ProfileId $profileId
+#region menu
+
+if($tokens){
+
+$tokencount = @($tokens).count
+
+Write-Host "VPP tokens found: $tokencount" -ForegroundColor Yellow
+Write-Host
+
+    if($tokencount -gt 1){
+
+    $VPP_Tokens = $tokens.Displayname| Sort-Object -Unique
+
+    $menu = @{}
+
+    for ($i=1;$i -le $VPP_Tokens.count; $i++) 
+    { Write-Host "$i. $($VPP_Tokens[$i-1])" 
+    $menu.Add($i,($VPP_Tokens[$i-1]))}
+
+    Write-Host
+    [int]$ans = Read-Host 'Select the token you wish to sync (numerical value)'
+    $selection = $menu.Item($ans)
+    Write-Host
+
+        if($selection){
+
+            $SelectedToken = $tokens | Where-Object { $_.DisplayName -eq "$Selection" }
+
+            $SelectedTokenId = $SelectedToken | Select-Object -ExpandProperty id
+
+            $TokenDisplayName = $SelectedToken.displayName
+
+        }
+
+    }
+
+    elseif($tokencount -eq 1){
+
+        $SelectedTokenId = $tokens.id
+        $TokenDisplayName = $tokens.displayName
+
+    }
+
+}
+
+else {
+
+    Write-Host
+    write-host "No VPP tokens found!" -f Yellow
+    break
+
+}
+
+$SyncID = $SelectedTokenId
+
+$VPPToken = Get-VPPToken | Where-Object { $_.id -eq "$SyncID"}
+
+if ($VPPToken.lastSyncStatus -eq "Completed") {
+    
+    $VPPSync = Sync-AppleVPP -id $SyncID
+    Write-Host "Success: " -ForegroundColor Green -NoNewline
+    Write-Host "$TokenDisplayName sync initiated."
+
+}
+
+else {
+    
+    $LastSyncStatus = $VPPToken.lastSyncStatus
+    Write-Warning "'$TokenDisplayName' sync status '$LastSyncStatus'..."
+
+}
+
+Write-Host

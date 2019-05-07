@@ -1,5 +1,4 @@
-
-<#
+﻿<#
 
 .COPYRIGHT
 Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT license.
@@ -149,50 +148,54 @@ $authority = "https://login.microsoftonline.com/$Tenant"
 
 ####################################################
 
-Function Get-DeviceConfigurationPolicy(){
+Function Get-RBACScopeTag(){
 
 <#
 .SYNOPSIS
-This function is used to get device configuration policies from the Graph API REST interface
+This function is used to get scope tags using the Graph API REST interface
 .DESCRIPTION
-The function connects to the Graph API Interface and gets any device configuration policies
+The function connects to the Graph API Interface and gets scope tags
 .EXAMPLE
-Get-DeviceConfigurationPolicy
-Returns any device configuration policies configured in Intune
+Get-RBACScopeTag -DisplayName "Test"
+Gets a scope tag with display Name 'Test'
 .NOTES
-NAME: Get-DeviceConfigurationPolicy
+NAME: Get-RBACScopeTag
 #>
 
 [cmdletbinding()]
-
+    
 param
 (
-    $name
+    [Parameter(Mandatory=$false)]
+    $DisplayName
 )
 
-$graphApiVersion = "Beta"
-$DCP_resource = "deviceManagement/deviceConfigurations"
+# Defining Variables
+$graphApiVersion = "beta"
+$Resource = "deviceManagement/roleScopeTags"
 
     try {
 
-        if($Name){
+        if($DisplayName){
 
-        $uri = "https://graph.microsoft.com/$graphApiVersion/$($DCP_resource)"
-        (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value | Where-Object { ($_.'displayName').contains("$Name") }
+            $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource`?`$filter=displayName eq '$DisplayName'"
+            $Result = (Invoke-RestMethod -Uri $uri -Method Get -Headers $authToken).Value
 
         }
 
         else {
 
-        $uri = "https://graph.microsoft.com/$graphApiVersion/$($DCP_resource)"
-        (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value
+            $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource"
+            $Result = (Invoke-RestMethod -Uri $uri -Method Get -Headers $authToken).Value
 
         }
+
+    return $Result
 
     }
 
     catch {
-
+    
     $ex = $_.Exception
     $errorResponse = $ex.Response.GetResponseStream()
     $reader = New-Object System.IO.StreamReader($errorResponse)
@@ -202,49 +205,66 @@ $DCP_resource = "deviceManagement/deviceConfigurations"
     Write-Host "Response content:`n$responseBody" -f Red
     Write-Error "Request to $Uri failed with HTTP Status $($ex.Response.StatusCode) $($ex.Response.StatusDescription)"
     write-host
-    break
-
+    throw
     }
 
 }
 
 ####################################################
 
-Function Get-DeviceConfigurationPolicyAssignment(){
+Function Get-IntuneApplication(){
 
 <#
 .SYNOPSIS
-This function is used to get device configuration policy assignment from the Graph API REST interface
+This function is used to get applications from the Graph API REST interface
 .DESCRIPTION
-The function connects to the Graph API Interface and gets a device configuration policy assignment
+The function connects to the Graph API Interface and gets any applications added
 .EXAMPLE
-Get-DeviceConfigurationPolicyAssignment $id guid
-Returns any device configuration policy assignment configured in Intune
+Get-IntuneApplication
+Returns any applications configured in Intune
 .NOTES
-NAME: Get-DeviceConfigurationPolicyAssignment
+NAME: Get-IntuneApplication
 #>
 
 [cmdletbinding()]
 
 param
 (
-    [Parameter(Mandatory=$true,HelpMessage="Enter id (guid) for the Device Configuration Policy you want to check assignment")]
+    $displayName,
     $id
 )
 
 $graphApiVersion = "Beta"
-$DCP_resource = "deviceManagement/deviceConfigurations"
-
+$Resource = "deviceAppManagement/mobileApps"
+    
     try {
+        
+        if($displayName){
 
-    $uri = "https://graph.microsoft.com/$graphApiVersion/$($DCP_resource)/$id/groupAssignments"
-    (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value
+            $uri = "https://graph.microsoft.com/$graphApiVersion/$($Resource)?`$filter=displayName eq '$displayName'"
+            (Invoke-RestMethod -Uri $uri –Headers $authToken –Method Get).value
 
+        }
+        
+        elseif($id){
+
+            $uri = "https://graph.microsoft.com/$graphApiVersion/$($Resource)/$id"
+            (Invoke-RestMethod -Uri $uri –Headers $authToken –Method Get)
+
+        }
+
+        else {
+
+            $uri = "https://graph.microsoft.com/$graphApiVersion/$($Resource)"
+            (Invoke-RestMethod -Uri $uri –Headers $authToken –Method Get).Value | ? { (!($_.'@odata.type').Contains("managed")) }
+        
+        }
     }
-
+    
     catch {
 
     $ex = $_.Exception
+    Write-Host "Request to $Uri failed with HTTP Status $([int]$ex.Response.StatusCode) $($ex.Response.StatusDescription)" -f Red
     $errorResponse = $ex.Response.GetResponseStream()
     $reader = New-Object System.IO.StreamReader($errorResponse)
     $reader.BaseStream.Position = 0
@@ -261,83 +281,67 @@ $DCP_resource = "deviceManagement/deviceConfigurations"
 
 ####################################################
 
-Function Get-AADGroup(){
+Function Update-IntuneApplication(){
 
 <#
 .SYNOPSIS
-This function is used to get AAD Groups from the Graph API REST interface
+This function is used to update an Intune Application using the Graph API REST interface
 .DESCRIPTION
-The function connects to the Graph API Interface and gets any Groups registered with AAD
+The function connects to the Graph API Interface and updates an Intune Application
 .EXAMPLE
-Get-AADGroup
-Returns all users registered with Azure AD
+Update-IntuneApplication -id $id -Type "#microsoft.graph.WebApp" -ScopeTags "1,2,3"
+Updates an Intune Application with selected scope tags
 .NOTES
-NAME: Get-AADGroup
+NAME: Update-IntuneApplication
 #>
 
 [cmdletbinding()]
 
 param
 (
-    $GroupName,
     $id,
-    [switch]$Members
+    $Type,
+    $ScopeTags
 )
 
-# Defining Variables
-$graphApiVersion = "v1.0"
-$Group_resource = "groups"
-# pseudo-group identifiers for all users and all devices
-[string]$AllUsers   = "acacacac-9df4-4c7d-9d50-4ef0226f57a9"
-[string]$AllDevices = "adadadad-808e-44e2-905a-0b7873a8a531"
+$graphApiVersion = "beta"
+$Resource = "deviceAppManagement/mobileApps/$id"
 
     try {
 
-        if($id){
+        if(($Type -eq "#microsoft.graph.androidManagedStoreApp") -or ($Type -eq "#microsoft.graph.microsoftStoreForBusinessApp") -or ($Type -eq "#microsoft.graph.iosVppApp")){
 
-        $uri = "https://graph.microsoft.com/$graphApiVersion/$($Group_resource)?`$filter=id eq '$id'"
-        switch ( $id ) {
-                $AllUsers   { $grp = [PSCustomObject]@{ displayName = "All users"}; $grp           }
-                $AllDevices { $grp = [PSCustomObject]@{ displayName = "All devices"}; $grp         }
-                default     { (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value  }
-                }
-                
+            Write-Warning "Scope Tags aren't available on '$Type' application Type..."
+
         }
+        
+        else {
+        
+        if($ScopeTags -eq "" -or $ScopeTags -eq $null){
 
-        elseif($GroupName -eq "" -or $GroupName -eq $null){
+$JSON = @"
 
-        $uri = "https://graph.microsoft.com/$graphApiVersion/$($Group_resource)"
-        (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value
+{
+  "@odata.type": "$Type",
+  "roleScopeTagIds": []
+}
 
+"@
         }
 
         else {
 
-            if(!$Members){
+            $object = New-Object –TypeName PSObject
+            $object | Add-Member -MemberType NoteProperty -Name '@odata.type' -Value "$Type"
+            $object | Add-Member -MemberType NoteProperty -Name 'roleScopeTagIds' -Value @($ScopeTags)
+            $JSON = $object | ConvertTo-Json
 
-            $uri = "https://graph.microsoft.com/$graphApiVersion/$($Group_resource)?`$filter=displayname eq '$GroupName'"
-            (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value
+        }
 
-            }
+        $uri = "https://graph.microsoft.com/$graphApiVersion/$($Resource)"
+        Invoke-RestMethod -Uri $uri -Headers $authToken -Method Patch -Body $JSON -ContentType "application/json"
 
-            elseif($Members){
-
-            $uri = "https://graph.microsoft.com/$graphApiVersion/$($Group_resource)?`$filter=displayname eq '$GroupName'"
-            $Group = (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value
-
-                if($Group){
-
-                $GID = $Group.id
-
-                $Group.displayName
-                write-host
-
-                $uri = "https://graph.microsoft.com/$graphApiVersion/$($Group_resource)/$GID/Members"
-                (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value
-
-                }
-
-            }
+        Start-Sleep -Milliseconds 100
 
         }
 
@@ -345,6 +349,7 @@ $Group_resource = "groups"
 
     catch {
 
+    Write-Host
     $ex = $_.Exception
     $errorResponse = $ex.Response.GetResponseStream()
     $reader = New-Object System.IO.StreamReader($errorResponse)
@@ -364,8 +369,6 @@ $Group_resource = "groups"
 
 #region Authentication
 
-write-host
-
 # Checking if authToken exists before running authentication
 if($global:authToken){
 
@@ -384,7 +387,7 @@ if($global:authToken){
 
             if($User -eq $null -or $User -eq ""){
 
-            $User = Read-Host -Prompt "Please specify your user principal name for Azure Authentication"
+            $Global:User = Read-Host -Prompt "Please specify your user principal name for Azure Authentication"
             Write-Host
 
             }
@@ -400,6 +403,7 @@ else {
 
     if($User -eq $null -or $User -eq ""){
 
+    Write-Host
     $User = Read-Host -Prompt "Please specify your user principal name for Azure Authentication"
     Write-Host
 
@@ -414,41 +418,43 @@ $global:authToken = Get-AuthToken -User $User
 
 ####################################################
 
-$DCPs = Get-DeviceConfigurationPolicy
+Write-Host
 
-write-host
+$displayName = "Bing Web App"
 
-foreach($DCP in $DCPs){
+$Application = Get-IntuneApplication -displayName "$displayName"
 
-write-host "Device Configuration Policy:"$DCP.displayName -f Yellow
-write-host
-$DCP
+if(@($Application).count -eq 1){
 
-$id = $DCP.id
+    $ADN = $Application.displayName
+    $AT = $Application.'@odata.type'
 
-$DCPA = Get-DeviceConfigurationPolicyAssignment -id $id
-write-host "Getting Configuration Policy assignment..." -f Cyan
-    if($DCPA){
-    if($DCPA.count -gt 1){
+    Write-Host "Intune Application '$ADN' with type '$AT' found..."
 
-            foreach($group in $DCPA){
+    $IA = Get-IntuneApplication -id $Application.id
 
-            (Get-AADGroup -id $group.targetGroupId).displayName
+    $Result = Update-IntuneApplication -id $IA.id -Type $IA.'@odata.type' -ScopeTags ""
 
-            }
+        if($Result -eq ""){
 
+            Write-Host "Intune Application '$ADN' patched..." -ForegroundColor Gray
+                            
         }
 
-        else {
-
-        (Get-AADGroup -id $DCPA.targetGroupId).displayName
-
-        }
-
-    }
-    else {
-        Write-Host "No assignments found."
-    }
     Write-Host
 
 }
+
+elseif(@($Application).count -gt 1){
+
+    Write-Host "More than one Intune Application found with name '$displayName'..." -ForegroundColor Red
+
+}
+
+else {
+
+    Write-Host "No Intune Applications found..." -ForegroundColor Red
+
+}
+
+####################################################

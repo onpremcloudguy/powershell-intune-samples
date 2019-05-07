@@ -1,5 +1,4 @@
-
-<#
+﻿<#
 
 .COPYRIGHT
 Copyright (c) Microsoft Corporation. All rights reserved. Licensed under the MIT license.
@@ -149,97 +148,91 @@ $authority = "https://login.microsoftonline.com/$Tenant"
 
 ####################################################
 
-Function Get-DeviceConfigurationPolicy(){
+Function Get-ManagedDevices(){
 
 <#
 .SYNOPSIS
-This function is used to get device configuration policies from the Graph API REST interface
+This function is used to get Intune Managed Devices from the Graph API REST interface
 .DESCRIPTION
-The function connects to the Graph API Interface and gets any device configuration policies
+The function connects to the Graph API Interface and gets any Intune Managed Device
 .EXAMPLE
-Get-DeviceConfigurationPolicy
-Returns any device configuration policies configured in Intune
+Get-ManagedDevices
+Returns all managed devices but excludes EAS devices registered within the Intune Service
+.EXAMPLE
+Get-ManagedDevices -IncludeEAS
+Returns all managed devices including EAS devices registered within the Intune Service
 .NOTES
-NAME: Get-DeviceConfigurationPolicy
+NAME: Get-ManagedDevices
 #>
 
 [cmdletbinding()]
 
 param
 (
-    $name
-)
-
-$graphApiVersion = "Beta"
-$DCP_resource = "deviceManagement/deviceConfigurations"
-
-    try {
-
-        if($Name){
-
-        $uri = "https://graph.microsoft.com/$graphApiVersion/$($DCP_resource)"
-        (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value | Where-Object { ($_.'displayName').contains("$Name") }
-
-        }
-
-        else {
-
-        $uri = "https://graph.microsoft.com/$graphApiVersion/$($DCP_resource)"
-        (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value
-
-        }
-
-    }
-
-    catch {
-
-    $ex = $_.Exception
-    $errorResponse = $ex.Response.GetResponseStream()
-    $reader = New-Object System.IO.StreamReader($errorResponse)
-    $reader.BaseStream.Position = 0
-    $reader.DiscardBufferedData()
-    $responseBody = $reader.ReadToEnd();
-    Write-Host "Response content:`n$responseBody" -f Red
-    Write-Error "Request to $Uri failed with HTTP Status $($ex.Response.StatusCode) $($ex.Response.StatusDescription)"
-    write-host
-    break
-
-    }
-
-}
-
-####################################################
-
-Function Get-DeviceConfigurationPolicyAssignment(){
-
-<#
-.SYNOPSIS
-This function is used to get device configuration policy assignment from the Graph API REST interface
-.DESCRIPTION
-The function connects to the Graph API Interface and gets a device configuration policy assignment
-.EXAMPLE
-Get-DeviceConfigurationPolicyAssignment $id guid
-Returns any device configuration policy assignment configured in Intune
-.NOTES
-NAME: Get-DeviceConfigurationPolicyAssignment
-#>
-
-[cmdletbinding()]
-
-param
-(
-    [Parameter(Mandatory=$true,HelpMessage="Enter id (guid) for the Device Configuration Policy you want to check assignment")]
+    [switch]$IncludeEAS,
+    [switch]$ExcludeMDM,
+    $DeviceName,
     $id
 )
 
-$graphApiVersion = "Beta"
-$DCP_resource = "deviceManagement/deviceConfigurations"
+# Defining Variables
+$graphApiVersion = "beta"
+$Resource = "deviceManagement/managedDevices"
 
-    try {
+try {
 
-    $uri = "https://graph.microsoft.com/$graphApiVersion/$($DCP_resource)/$id/groupAssignments"
-    (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value
+    $Count_Params = 0
 
+    if($IncludeEAS.IsPresent){ $Count_Params++ }
+    if($ExcludeMDM.IsPresent){ $Count_Params++ }
+    if($DeviceName.IsPresent){ $Count_Params++ }
+    if($id.IsPresent){ $Count_Params++ }
+        
+        if($Count_Params -gt 1){
+
+            write-warning "Multiple parameters set, specify a single parameter -IncludeEAS, -ExcludeMDM, -deviceName, -id or no parameter against the function"
+            Write-Host
+            break
+
+        }
+        
+        elseif($IncludeEAS){
+
+            $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource"
+            (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value
+
+        }
+
+        elseif($ExcludeMDM){
+
+            $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource`?`$filter=managementAgent eq 'eas'"
+            (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value
+
+        }
+
+        elseif($id){
+
+            $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource('$id')"
+            (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get)
+
+        }
+
+        elseif($DeviceName){
+
+            $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource`?`$filter=deviceName eq '$DeviceName'"
+            (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value
+
+        }
+        
+        else {
+    
+            $uri = "https://graph.microsoft.com/$graphApiVersion/$Resource`?`$filter=managementAgent eq 'mdm' and managementAgent eq 'easmdm'"
+            Write-Warning "EAS Devices are excluded by default, please use -IncludeEAS if you want to include those devices"
+            Write-Host
+            (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value
+
+        }
+    
     }
 
     catch {
@@ -261,90 +254,62 @@ $DCP_resource = "deviceManagement/deviceConfigurations"
 
 ####################################################
 
-Function Get-AADGroup(){
+Function Update-ManagedDevices(){
 
 <#
 .SYNOPSIS
-This function is used to get AAD Groups from the Graph API REST interface
+This function is used to add a device compliance policy using the Graph API REST interface
 .DESCRIPTION
-The function connects to the Graph API Interface and gets any Groups registered with AAD
+The function connects to the Graph API Interface and adds a device compliance policy
 .EXAMPLE
-Get-AADGroup
-Returns all users registered with Azure AD
+Update-ManagedDevices -JSON $JSON
+Adds an Android device compliance policy in Intune
 .NOTES
-NAME: Get-AADGroup
+NAME: Update-ManagedDevices
 #>
 
 [cmdletbinding()]
 
 param
 (
-    $GroupName,
     $id,
-    [switch]$Members
+    $ScopeTags
 )
 
-# Defining Variables
-$graphApiVersion = "v1.0"
-$Group_resource = "groups"
-# pseudo-group identifiers for all users and all devices
-[string]$AllUsers   = "acacacac-9df4-4c7d-9d50-4ef0226f57a9"
-[string]$AllDevices = "adadadad-808e-44e2-905a-0b7873a8a531"
+$graphApiVersion = "beta"
+$Resource = "deviceManagement/managedDevices('$id')"
 
     try {
 
-        if($id){
+        if($ScopeTags -eq "" -or $ScopeTags -eq $null){
 
-        $uri = "https://graph.microsoft.com/$graphApiVersion/$($Group_resource)?`$filter=id eq '$id'"
-        switch ( $id ) {
-                $AllUsers   { $grp = [PSCustomObject]@{ displayName = "All users"}; $grp           }
-                $AllDevices { $grp = [PSCustomObject]@{ displayName = "All devices"}; $grp         }
-                default     { (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value  }
-                }
-                
-        }
+$JSON = @"
 
-        elseif($GroupName -eq "" -or $GroupName -eq $null){
+{
+  "roleScopeTagIds": []
+}
 
-        $uri = "https://graph.microsoft.com/$graphApiVersion/$($Group_resource)"
-        (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value
-
+"@
         }
 
         else {
 
-            if(!$Members){
+        $object = New-Object –TypeName PSObject
+        $object | Add-Member -MemberType NoteProperty -Name 'roleScopeTagIds' -Value @($ScopeTags)
 
-            $uri = "https://graph.microsoft.com/$graphApiVersion/$($Group_resource)?`$filter=displayname eq '$GroupName'"
-            (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value
+        $JSON = $object | ConvertTo-Json
 
-            }
-
-            elseif($Members){
-
-            $uri = "https://graph.microsoft.com/$graphApiVersion/$($Group_resource)?`$filter=displayname eq '$GroupName'"
-            $Group = (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value
-
-                if($Group){
-
-                $GID = $Group.id
-
-                $Group.displayName
-                write-host
-
-                $uri = "https://graph.microsoft.com/$graphApiVersion/$($Group_resource)/$GID/Members"
-                (Invoke-RestMethod -Uri $uri -Headers $authToken -Method Get).Value
-
-                }
-
-            }
 
         }
+
+        $uri = "https://graph.microsoft.com/$graphApiVersion/$($Resource)"
+        Invoke-RestMethod -Uri $uri -Headers $authToken -Method Patch -Body $JSON -ContentType "application/json"
 
     }
 
     catch {
 
+    Write-Host
     $ex = $_.Exception
     $errorResponse = $ex.Response.GetResponseStream()
     $reader = New-Object System.IO.StreamReader($errorResponse)
@@ -414,41 +379,55 @@ $global:authToken = Get-AuthToken -User $User
 
 ####################################################
 
-$DCPs = Get-DeviceConfigurationPolicy
+$DeviceName = "Intune Device Name"
 
-write-host
+$IntuneDevice = Get-ManagedDevices -DeviceName "$DeviceName"
 
-foreach($DCP in $DCPs){
+if($IntuneDevice){
 
-write-host "Device Configuration Policy:"$DCP.displayName -f Yellow
-write-host
-$DCP
+    if(@($IntuneDevice).count -eq 1){
 
-$id = $DCP.id
+    write-host "Are you sure you want to remove all scope tags from '$DeviceName' (Y or N?)" -ForegroundColor Yellow
+    $Confirm = read-host
 
-$DCPA = Get-DeviceConfigurationPolicyAssignment -id $id
-write-host "Getting Configuration Policy assignment..." -f Cyan
-    if($DCPA){
-    if($DCPA.count -gt 1){
+        if($Confirm -eq "y" -or $Confirm -eq "Y"){
+    
+        $DeviceID = $IntuneDevice.id
+        $DeviceName = $IntuneDevice.deviceName
 
-            foreach($group in $DCPA){
+        write-host "Managed Device" $IntuneDevice.deviceName "found..." -ForegroundColor Yellow
 
-            (Get-AADGroup -id $group.targetGroupId).displayName
+        $Result = Update-ManagedDevices -id $DeviceID -ScopeTags ""
+
+            if($Result -eq ""){
+
+                Write-Host "Managed Device '$DeviceName' patched with No Scope Tag assigned..." -ForegroundColor Gray
 
             }
-
+            
         }
 
         else {
 
-        (Get-AADGroup -id $DCPA.targetGroupId).displayName
+            Write-Host "Removal of all Scope Tags for '$DeviceName' was cancelled..."
 
         }
 
+        Write-Host
+
     }
-    else {
-        Write-Host "No assignments found."
+
+    elseif(@($IntuneManagedDevice).count -gt 1){
+
+        Write-Host "More than one device found with name '$deviceName'..." -ForegroundColor Red
+
     }
-    Write-Host
+
+}
+
+else {
+
+Write-Host "No Intune Managed Device found with name '$deviceName'..." -ForegroundColor Red
+Write-Host
 
 }
